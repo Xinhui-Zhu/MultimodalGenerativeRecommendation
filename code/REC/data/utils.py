@@ -34,10 +34,14 @@ def bulid_dataloader(config, dataload):
     '''
     split dataset, generate user history sequence, train/valid/test dataset
     '''
+    if config['id_emb'] == 'id':
+        train_set_and_collate = 'SEQTrainDataset'
+    else:
+        train_set_and_collate = ('TextSEQTrainDataset', 'customize_rmpad_collate')
     dataset_dict = {
         'SASRec': ('SEQTrainDataset', 'SeqEvalDataset', 'seq_eval_collate'),
-        'HSTU': ('SEQTrainDataset', 'SeqEvalDataset', 'seq_eval_collate'),
-        'LLMIDRec': ('SEQTrainDataset', 'SeqEvalDataset', 'seq_eval_collate'),
+        'HSTU': (train_set_and_collate, 'SeqEvalDataset', 'seq_eval_collate'),
+        'LLMIDRec': (train_set_and_collate, 'SeqEvalDataset', 'seq_eval_collate'),
         'HLLM': (('TextSEQTrainDataset', 'customize_rmpad_collate'), 'SeqEvalDataset', 'seq_eval_collate')
     }
 

@@ -28,10 +28,23 @@ class WandbLogger(object):
 
             # Initialize a W&B run
             if self._wandb.run is None:
-                self._wandb.init(
-                    project=self.config.wandb_project,
-                    config=self.config
-                )
+                if self.config.model == "HLLM":
+                    project=f"{self.config.wandb_project}_{self.config.dataset}"
+                else:
+                    project=f"{self.config.wandb_project}_{self.config.dataset}_{self.config.model}"
+                
+                if self.config.transformer_type =='HSTU':
+                    self._wandb.init(
+                        project=project,
+                        name=f"{self.config.transformer_type}_{self.config.id_emb}_{self.config.train_batch_size}",
+                        config=self.config
+                    )
+                else:
+                    self._wandb.init(
+                        project=project,
+                        name=f"{self.config.model}_{self.config.id_emb}_{self.config.train_batch_size}",
+                        config=self.config
+                    )
 
             self._set_steps()
 

@@ -119,6 +119,8 @@ def compute_flash_attention(
         qkv = qkv[cur_mask]
         cu_seqlens = F.pad(seqlens.cumsum(dim=0, dtype=torch.int32), (1, 0))
         max_seqlen = seqlens.max().item()
+        if qkv.dim() == 3:
+            qkv = qkv.unsqueeze(0)
 
         out = flash_self_attention(
             qkv,

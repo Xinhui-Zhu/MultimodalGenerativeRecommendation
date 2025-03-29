@@ -81,9 +81,26 @@ def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
         logger.info(f"Update text_path to {config['text_path']}")
 
     # get model and data
-    dataload = load_data(config)
-    train_loader, valid_loader, test_loader = bulid_dataloader(config, dataload)
-    print(f"{len(train_loader) = }")
+    if config['split_data']:
+        dataload = load_data(config)
+        original_dataset = config['dataset']
+        print(config['dataset'])
+        config['dataset'] = original_dataset + "-train"
+        train_dataload = load_data(config)
+        config['dataset'] = original_dataset + "-test"
+        test_dataload = load_data(config)
+        config['dataset'] = original_dataset 
+        train_loader, _, _ = bulid_dataloader(config, train_dataload)
+        _, valid_loader, test_loader = bulid_dataloader(config, test_dataload)
+        print(f"len(train_loader) = {len(train_loader)}")
+        print(f"len(test_loader) = {len(test_loader)}")
+        logger.info(train_dataload)
+        logger.info(test_dataload)
+    else:
+        dataload = load_data(config)
+        train_loader, valid_loader, test_loader = bulid_dataloader(config, dataload)
+        print(f"{len(train_loader)} =")
+        logger.info(dataload)
 
     model = get_model(config['model'])(config, dataload)
     # model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model).to(device)
@@ -93,18 +110,27 @@ def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
 
     logger.info(set_color('\nWorld_Size', 'pink') + f' = {world_size} \n')
     logger.info(config)
-    logger.info(dataload)
     logger.info(model)
 
     if config['val_only']:
-        ckpt_path = os.path.join(config['checkpoint_dir'], 'pytorch_model.bin')
-        ckpt = torch.load(ckpt_path, map_location='cpu')
-        logger.info(f'Eval only model load from {ckpt_path}')
-        msg = trainer.model.load_state_dict(ckpt, False)
-        logger.info(f'{msg.unexpected_keys = }')
-        logger.info(f'{msg.missing_keys = }')
-        test_result = trainer.evaluate(test_loader, load_best_model=False, show_progress=config['show_progress'], init_model=True)
+        # ckpt_path = os.path.join(config['checkpoint_dir'], 'pytorch_model.bin')
+        # ckpt = torch.load(ckpt_path, map_location='cpu')
+        # logger.info(f'Eval only model load from {ckpt_path}')
+        # msg = trainer.model.load_state_dict(ckpt, False)
+        # logger.info(f'{msg.unexpected_keys = }')
+        # logger.info(f'{msg.missing_keys = }')
+        model_file = os.path.join(config['checkpoint_dir'], 'HLLM-0.pth/checkpoint/zero_pp_rank_0_mp_rank_00_model_states.pt')
+        result_dict = trainer.evaluate(test_loader, load_best_model=True, show_progress=config['show_progress'], init_model=True)
+        test_result = result_dict.get("all", None)
+        test_result_cold = result_dict.get("cold", None)
+        test_result_warm = result_dict.get("warm", None)
+        test_result_strictly_cold = result_dict.get("strictly_cold", None)
+
         logger.info(set_color('test result', 'yellow') + f': {test_result}')
+        if test_result_cold:
+            logger.info(set_color('test result strictly cold', 'yellow') + f': {test_result_strictly_cold}')
+            logger.info(set_color('test result cold', 'yellow') + f': {test_result_cold}')
+            logger.info(set_color('test result warm', 'yellow') + f': {test_result_warm}')
     else:
         # training process
         best_valid_score, best_valid_result = trainer.fit(
@@ -113,10 +139,18 @@ def run_loop(local_rank, config_file=None, saved=True, extra_args=[]):
         logger.info(f'Trianing Ended' + set_color('best valid ', 'yellow') + f': {best_valid_result}')
 
         # model evaluation
-        test_result = trainer.evaluate(test_loader, load_best_model=saved, show_progress=config['show_progress'])
+        result_dict = trainer.evaluate(test_loader, load_best_model=saved, show_progress=config['show_progress'])
+        test_result = result_dict.get("all", None)
+        test_result_cold = result_dict.get("cold", None)
+        test_result_warm = result_dict.get("warm", None)
+        test_result_strictly_cold = result_dict.get("strictly_cold", None)
 
         logger.info(set_color('best valid ', 'yellow') + f': {best_valid_result}')
         logger.info(set_color('test result', 'yellow') + f': {test_result}')
+        if test_result_cold:
+            logger.info(set_color('test result strictly cold', 'yellow') + f': {test_result_strictly_cold}')
+            logger.info(set_color('test result cold', 'yellow') + f': {test_result_cold}')
+            logger.info(set_color('test result warm', 'yellow') + f': {test_result_warm}')
 
         return {
             'best_valid_score': best_valid_score,
@@ -136,4 +170,10 @@ if __name__ == '__main__':
     torch.cuda.set_device(local_rank)
     dist.init_process_group(backend='nccl')
 
-    run_loop(local_rank=local_rank, config_file=config_file, extra_args=extra_args)
+    try:
+        run_loop(local_rank=local_rank, config_file=config_file, extra_args=extra_args)
+    except torch.cuda.OutOfMemoryError as e:
+        print("CUDA OutOfMemoryError encountered!")
+        print(torch.cuda.memory_summary(device=0))  # 打印显存摘要信息
+        torch.cuda.empty_cache()  # 清理显存
+        raise e  # 重新抛出错误以便退出程序或进一步处理

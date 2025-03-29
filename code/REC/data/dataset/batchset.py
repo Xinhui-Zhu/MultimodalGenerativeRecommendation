@@ -14,7 +14,8 @@ import torch
 import pandas as pd
 from transformers import AutoTokenizer
 import logging
-
+import os
+import pickle
 
 class BatchTextDataset(Dataset):
     def __init__(self, config, dataload):
@@ -32,6 +33,14 @@ class BatchTextDataset(Dataset):
         self.item_emb_token_n = config['item_emb_token_n']
         self.logger = logging.getLogger()
         self.load_content()
+        cnw_items_file = os.path.join(config['data_path'], config['dataset']+'_coldrec_ids.pkl')
+        self.coldrec = True if os.path.exists(cnw_items_file) else False
+        if self.coldrec:
+            print("Transform coldrec ids")
+            with open(cnw_items_file, 'rb') as f:
+                data = pickle.load(f)
+            self.cold_items = list(data['cold_items'])
+            self.strictly_cold_items = list(data.get('strictly_cold_items', []))
 
     def __len__(self):
         return self.item_num
@@ -69,10 +78,12 @@ class BatchTextDataset(Dataset):
         pos_input_ids.extend(ids + [0] * self.item_emb_token_n)
         pos_cu_input_lens.append(len(ids) + self.item_emb_token_n)
         pos_position_ids.extend((torch.arange(len(ids) + self.item_emb_token_n) + (self.max_text_length - len(ids))).tolist())
+        is_cold = 1 if index in self.cold_items else 0 
         outputs = {
             "pos_item_ids": torch.as_tensor(index, dtype=torch.int64),
             "pos_input_ids": torch.as_tensor(pos_input_ids, dtype=torch.int64),
             "pos_cu_input_lens": torch.as_tensor(pos_cu_input_lens, dtype=torch.int64),
-            "pos_position_ids": torch.as_tensor(pos_position_ids, dtype=torch.int64)
+            "pos_position_ids": torch.as_tensor(pos_position_ids, dtype=torch.int64),
+            "pos_cold_ids": torch.as_tensor(is_cold, dtype=torch.int64),
         }
         return outputs

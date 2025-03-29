@@ -133,7 +133,8 @@ class Recall(TopkMetric):
         pos_index, pos_len = self.used_info(dataobject)
         result = self.metric_info(pos_index, pos_len)
         metric_dict = self.topk_result('recall', result)
-        return metric_dict
+        # return metric_dict
+        return metric_dict, result.shape[0]
 
     def metric_info(self, pos_index, pos_len):
         return np.cumsum(pos_index, axis=1) / pos_len.reshape(-1, 1)
@@ -160,7 +161,8 @@ class NDCG(TopkMetric):
         pos_index, pos_len = self.used_info(dataobject)
         result = self.metric_info(pos_index, pos_len)
         metric_dict = self.topk_result('ndcg', result)
-        return metric_dict
+        # return metric_dict
+        return metric_dict, result.shape[0]
 
     def metric_info(self, pos_index, pos_len):
         len_rank = np.full_like(pos_len, pos_index.shape[1])

@@ -6,7 +6,7 @@ reproducibility: True
 checkpoint_dir: 'saved'
 show_progress: True
 
-log_wandb: False
+log_wandb: True
 wandb_project: 'REC'
 MAX_ITEM_LIST_LENGTH: 50
 MAX_TEXT_LENGTH: 64
@@ -45,4 +45,4 @@ stopping_step: 5
 
 strategy: deepspeed
 precision: bf16-mixed
-stage: 2
+stage: 3

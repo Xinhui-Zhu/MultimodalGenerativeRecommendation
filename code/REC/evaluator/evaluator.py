@@ -30,6 +30,8 @@ class Evaluator(object):
         """
         result_dict = OrderedDict()
         for metric in self.metrics:
-            metric_val = self.metric_class[metric].calculate_metric(dataobject)
+            # metric_val = self.metric_class[metric].calculate_metric(dataobject)
+            metric_val, sample_num = self.metric_class[metric].calculate_metric(dataobject)
             result_dict.update(metric_val)
-        return result_dict
+        # return result_dict
+        return result_dict, sample_num

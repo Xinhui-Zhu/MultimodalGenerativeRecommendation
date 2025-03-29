@@ -5,7 +5,7 @@ reproducibility: True
 checkpoint_dir: 'saved'
 show_progress: False
 
-log_wandb: False
+log_wandb: True
 wandb_project: 'REC'
 MAX_ITEM_LIST_LENGTH: 10
 
@@ -34,3 +34,6 @@ stopping_step: 10
 strategy: deepspeed
 precision: bf16-mixed
 stage: 2
+
+item_prompt: 'Compress the following sentence into embedding: '
+item_emb_token_n: 1

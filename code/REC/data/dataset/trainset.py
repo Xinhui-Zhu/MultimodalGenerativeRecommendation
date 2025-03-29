@@ -19,8 +19,8 @@ import datetime
 import pytz
 import math
 import torch.distributed as dist
-
-# 数据形式为 [[user_seq], [neg_item_seq]] , [mask]
+import os
+import pickle
 
 
 class SEQTrainDataset(Dataset):
@@ -30,7 +30,7 @@ class SEQTrainDataset(Dataset):
 
         self.item_num = dataload.item_num
         self.train_seq = dataload.train_feat['item_seq']
-
+        self.cold_seq = dataload.train_feat['cold_seq'] if 'cold_item' in dataload.train_feat else None
         self.length = len(self.train_seq)
 
         self.max_seq_length = config['MAX_ITEM_LIST_LENGTH']+1
@@ -97,6 +97,11 @@ class TextSEQTrainDataset(Dataset):
 
         self.item_num = dataload.item_num
         self.train_seq = dataload.train_feat['item_seq']
+        # if 'cold_item' in dataload.train_feat.keys():
+        #     print("'cold_item' in dataload.train_feat.keys()")
+        self.cold_seq = dataload.train_feat['cold_seq'] 
+        # else:
+        #     self.cold_seq = None
         self.length = len(self.train_seq)
         self.train_time_seq = dataload.train_feat['time_seq']
         self.id2token = dataload.id2token['item_id']
@@ -121,7 +126,15 @@ class TextSEQTrainDataset(Dataset):
         logger.info(f"Text keys: {self.text_keys}")
         logger.info(f"Item prompt: {self.item_prompt}")
         self.load_content()
-
+        cnw_items_file = os.path.join(self.config['data_path'], self.config['dataset']+'_coldrec_ids.pkl')
+        self.coldrec = True if os.path.exists(cnw_items_file) else False
+        if self.coldrec:
+            print("Transform coldrec ids")
+            with open(cnw_items_file, 'rb') as f:
+                data = pickle.load(f)
+            self.cold_items = list(data['cold_items'])
+            self.strictly_cold_items = list(data.get('strictly_cold_items', []))
+               
     def __len__(self):
         return self.length
 
@@ -147,7 +160,7 @@ class TextSEQTrainDataset(Dataset):
         sequence = sequence[-max_length:]
         return torch.tensor(sequence, dtype=torch.long)
 
-    def reconstruct_train_data(self, item_seq):
+    def reconstruct_train_data(self, item_seq, cold_seq):
         masked_index = []
         neg_item = []
         item_seq_len = len(item_seq)
@@ -156,6 +169,8 @@ class TextSEQTrainDataset(Dataset):
             masked_index.append(1)
 
         item_seq = self._padding_sequence(list(item_seq), self.max_seq_length, random_sample=self.random_sample)
+        # if cold_seq:
+        cold_seq = self._padding_sequence(list(cold_seq), self.max_seq_length, random_sample=False) 
         masked_index = self._padding_sequence(masked_index, self.max_seq_length-1)
         if self.num_negatives:
             neg_item = []
@@ -163,7 +178,8 @@ class TextSEQTrainDataset(Dataset):
                 neg_item.append(self._neg_sample([]))
         else:
             neg_item = self._padding_sequence(neg_item, self.max_seq_length, random_sample=self.random_sample)
-        return item_seq, neg_item, masked_index
+        neg_cold_seq = [1 if i in self.cold_items else 0 for i in neg_item]
+        return item_seq, neg_item, masked_index, cold_seq, neg_cold_seq
 
     def _padding_time_sequence(self, sequence, max_length):
         pad_len = max_length - len(sequence)
@@ -178,7 +194,8 @@ class TextSEQTrainDataset(Dataset):
     def __getitem__(self, index):
 
         item_seq = self.train_seq[index]
-        item_seq, neg_item, masked_index = self.reconstruct_train_data(item_seq)
+        cold_seq = self.cold_seq[index] # if self.cold_seq else None
+        item_seq, neg_item, masked_index, cold_seq, neg_cold_seq = self.reconstruct_train_data(item_seq, cold_seq)
         time_seq = self.train_time_seq[index]
         time_seq = self._padding_time_sequence(list(time_seq), self.max_seq_length)
         item_seq_token = self.id2token[item_seq]
@@ -215,7 +232,6 @@ class TextSEQTrainDataset(Dataset):
             neg_input_ids.extend(ids + [0] * self.item_emb_token_n)
             neg_cu_input_lens.append(len(ids) + self.item_emb_token_n)
             neg_position_ids.extend((torch.arange(len(ids) + self.item_emb_token_n) + (self.max_text_length - len(ids))).tolist())
-
         outputs = {
             "pos_item_ids": torch.as_tensor(item_seq, dtype=torch.int64),
             "neg_item_ids": torch.as_tensor(neg_item, dtype=torch.int64),
@@ -228,4 +244,7 @@ class TextSEQTrainDataset(Dataset):
             "attention_mask": torch.as_tensor(masked_index, dtype=torch.int64),
             "time_ids": torch.as_tensor(time_seq, dtype=torch.int64),
         }
+        if cold_seq is not None:
+            outputs['pos_cold_ids'] = torch.as_tensor(cold_seq, dtype=torch.int64)
+            outputs['neg_cold_ids'] = torch.as_tensor(neg_cold_seq, dtype=torch.int64)
         return outputs

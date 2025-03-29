@@ -3,3 +3,8 @@
 code/log/
 code/log_tensorboard/
 code/saved/
+code/saved_dir/
+code/wandb/
+dataset/
+information/
+original_data/

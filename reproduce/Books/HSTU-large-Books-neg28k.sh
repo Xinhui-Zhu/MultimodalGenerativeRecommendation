@@ -18,6 +18,7 @@ cd code && python3 main.py \
 --item_embedding_size 64 \
 --hstu_embedding_size 64 \
 --fix_temp True \
+--num_negatives 512 \
 --data_split False \
 --show_progress True \
 --update_interval 100 \

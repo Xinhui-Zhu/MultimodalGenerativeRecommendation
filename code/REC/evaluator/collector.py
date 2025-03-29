@@ -5,7 +5,8 @@ from .register import Register
 import torch
 import copy
 import numpy as np
-
+import os
+import pickle
 
 class DataStruct(object):
 
@@ -60,6 +61,9 @@ class Collector(object):
     def __init__(self, config):
         self.config = config
         self.data_struct = DataStruct()
+        self.data_struct_cold = DataStruct()
+        self.data_struct_strictly_cold = DataStruct()
+        self.data_struct_warm = DataStruct()
         self.register = Register(config)
         self.full = True
         self.topk = self.config['topk']
@@ -126,6 +130,18 @@ class Collector(object):
                 positive_u(Torch.Tensor): the row index of positive items for each user.
                 positive_i(Torch.Tensor): the positive item id for each user.
         """
+        cnw_items_file = os.path.join(self.config['data_path'], self.config['dataset']+'_processed_ids.pkl')
+        self.coldrec = True if os.path.exists(cnw_items_file) else False
+        if self.coldrec:
+            print("Evaluating coldrec metrics")
+            with open(cnw_items_file, 'rb') as f:
+                data = pickle.load(f)
+            cold_items = list(data['cold_items'])
+            is_cold_item = torch.isin(positive_i, torch.tensor(cold_items, device=positive_i.device))
+            is_warm_item = ~is_cold_item
+            strictly_cold_items = list(data.get('strictly_cold_items', []))
+            is_strictly_cold_item = torch.isin(positive_i, torch.tensor(strictly_cold_items, device=positive_i.device))
+            
         if self.register.need('rec.items'):
 
             # get topk
@@ -141,7 +157,13 @@ class Collector(object):
             pos_idx = torch.gather(pos_matrix, dim=1, index=topk_idx)
             result = torch.cat((pos_idx, pos_len_list), dim=1)
             self.data_struct.update_tensor('rec.topk', result)
-
+            if self.coldrec:
+                result_cold = result[is_cold_item]
+                result_warm = result[is_warm_item]
+                self.data_struct_cold.update_tensor('rec.topk', result_cold)
+                self.data_struct_warm.update_tensor('rec.topk', result_warm)
+                result_strictly_cold = result[is_strictly_cold_item]
+                self.data_struct_strictly_cold.update_tensor('rec.topk', result_strictly_cold)
         if self.register.need('rec.meanrank'):
 
             desc_scores, desc_index = torch.sort(scores_tensor, dim=-1, descending=True)
@@ -204,4 +226,23 @@ class Collector(object):
         for key in ['rec.topk', 'rec.meanrank', 'rec.score', 'rec.items', 'data.label']:
             if key in self.data_struct:
                 del self.data_struct[key]
-        return returned_struct
+        returned_struct_cold = copy.deepcopy(self.data_struct_cold)
+        for key in ['rec.topk', 'rec.meanrank', 'rec.score', 'rec.items', 'data.label']:
+            if key in self.data_struct_cold:
+                del self.data_struct_cold[key]
+        returned_struct_warm = copy.deepcopy(self.data_struct_warm)
+        for key in ['rec.topk', 'rec.meanrank', 'rec.score', 'rec.items', 'data.label']:
+            if key in self.data_struct_warm:
+                del self.data_struct_warm[key]
+        returned_struct_strictly_cold = copy.deepcopy(self.data_struct_strictly_cold)
+        for key in ['rec.topk', 'rec.meanrank', 'rec.score', 'rec.items', 'data.label']:
+            if key in self.data_struct_strictly_cold:
+                del self.data_struct_strictly_cold[key]
+        
+
+        return {
+            "all": returned_struct, 
+            "cold": returned_struct_cold, 
+            "warm": returned_struct_warm, 
+            "strictly_cold": returned_struct_strictly_cold
+        }

@@ -45,8 +45,13 @@ class Data:
             raise ValueError(f'File {inter_feat_path} not exist.')
 
         df = pd.read_csv(
-            inter_feat_path, delimiter=',', dtype={'item_id': str, 'user_id': str, 'timestamp': int}, header=0, names=['item_id', 'user_id', 'timestamp']
+            # inter_feat_path, delimiter=',', dtype={'item_id': str, 'user_id': str, 'timestamp': int}, header=0, names=['item_id', 'user_id', 'timestamp']
+            inter_feat_path, delimiter=',', header=0
         )
+        df['item_id'] = df['item_id'].astype(str)
+        df['user_id'] = df['user_id'].astype(str)
+        print(df.dtypes)
+
         self.logger.info(f'Interaction feature loaded successfully from [{inter_feat_path}].')
         self.inter_feat = df
 
@@ -84,6 +89,21 @@ class Data:
             self.token2id[feature] = token_id
             self.inter_feat[feature] = self.inter_feat[feature].map(token_id)
 
+        cnw_items_file = os.path.join(self.config['data_path'], self.config['dataset']+'_coldrec_ids.pkl')
+        self.coldrec = True if os.path.exists(cnw_items_file) else False
+        if self.coldrec:
+            print("Transform coldrec ids")
+            with open(cnw_items_file, 'rb') as f:
+                data = pickle.load(f)
+            cold_items = list(data['cold_items'])
+            cold_items = [token_id[str(i)] for i in cold_items]
+            strictly_cold_items = None
+            # self.ivd = {v: k for k, v in token_id.items()}
+            strictly_cold_items = list(data.get('strictly_cold_items', []))
+            strictly_cold_items = [token_id[str(i)] for i in strictly_cold_items]
+            with open(os.path.join(self.config['data_path'], self.config['dataset']+'_processed_ids.pkl'), "wb") as f:
+                pickle.dump({"cold_items": cold_items, "strictly_cold_items": strictly_cold_items}, f)
+                
         self.user_num = len(self.id2token['user_id'])
         self.item_num = len(self.id2token['item_id'])
         self.logger.info(f"{self.user_num = } {self.item_num = }")
@@ -168,9 +188,13 @@ class Data:
         seq_train_feat['user_id'] = np.array(uid_list)
         seq_train_feat['item_seq'] = []
         seq_train_feat['time_seq'] = []
+        seq_train_feat['cold_seq'] = []
         for index in item_list_index:
             seq_train_feat['item_seq'].append(train_feat['item_id'][index])
             seq_train_feat['time_seq'].append(train_feat['timestamp'][index])
+            if 'cold_item' in train_feat.keys():
+                # print("'cold_item' in train_feat")
+                seq_train_feat['cold_seq'].append(train_feat['cold_item'][index])
 
         return seq_train_feat
 
