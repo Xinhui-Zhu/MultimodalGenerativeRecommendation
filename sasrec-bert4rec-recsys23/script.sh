@@ -1,0 +1,1 @@
+python run.py --config-name=BERT4Rec data_path=../data/prime_pantry.txt 

@@ -16,7 +16,7 @@ CUDA_VISIBLE_DEVICES="0,1,2,3" python3 main.py \
 --MAX_ITEM_LIST_LENGTH 50 \
 --epochs 5 \
 --optim_args.learning_rate 1e-4 \
---checkpoint_dir saved_dir/HLLM/arts/id \
+--checkpoint_dir saved_dir/HLLM/arts/fix_weighted \
 --loss nce \
 --MAX_TEXT_LENGTH 128 \
 --dataset arts \
@@ -30,7 +30,7 @@ CUDA_VISIBLE_DEVICES="0,1,2,3" python3 main.py \
 --seed 42 \
 --stage 3 \
 --split_data False \
---id_emb id \
+--id_emb fix_weighted \
 --coldrec item \
 --transformer_type user_llm \
 --by_case True \
